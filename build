@@ -1,0 +1,14 @@
+#!/bin/bash
+
+cc conv.c -lpng -lm -o conv
+./conv
+ffmpeg -y -i sound.wav -f s8 -c:a pcm_s8 -ac 1 -ar 8000 sound.raw
+sed -n -e '/data encoding/{n;s/^ *//p}' MyTilemap.tmx | base64 -d | xxd -c 1 | awk 'NR % 4 == 1 {print $2}' | xxd -r -p - tilemap.raw
+m68k-linux-gnu-as --register-prefix-optional -o crt0.o crt0.s
+m68k-linux-gnu-gcc -m68000 -nostdlib -fomit-frame-pointer -c -O0 main.c objs.c sound.c
+m68k-linux-gnu-objcopy --prefix-sections=.col -I binary -O elf32-m68k colors.pal colors.pal.o
+m68k-linux-gnu-objcopy --prefix-sections=.tilemap -I binary -O elf32-m68k tilemap.raw tilemap.raw.o
+m68k-linux-gnu-objcopy --prefix-sections=.tileset -I binary -O elf32-m68k tileset.raw tileset.raw.o
+m68k-linux-gnu-objcopy --prefix-sections=.sound -I binary -O elf32-m68k sound.raw sound.raw.o
+m68k-linux-gnu-gcc -m68000 -Wall -nostartfiles -nodefaultlibs -fno-builtin -Wl,-Map=game.map -Wl,--build-id=none -T amiga.lk -o game.a crt0.o main.o objs.o sound.o
+dd if=/dev/zero of=game.a bs=1 count=1 seek=262143

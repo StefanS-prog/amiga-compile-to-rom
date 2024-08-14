@@ -1,0 +1,76 @@
+OUTPUT_FORMAT("binary")
+/*OUTPUT_FORMAT("elf32-big")*/
+OUTPUT_ARCH(m68k)
+ENTRY(_start)
+
+MEMORY
+{
+  rom (rx)      : ORIGIN = 0xf80000, LENGTH = 0x40000
+  chip_reg (rw) : ORIGIN = 0xdff000, LENGTH = 0x1000
+  ciaa_reg (rw) : ORIGIN = 0xbfe001, LENGTH = 0xf01
+  ciab_reg (rw) : ORIGIN = 0xbfd000, LENGTH = 0xf01
+  ram (rw)      : ORIGIN = 0x000100, LENGTH = 0x80000
+  pys_rom (rx)  : ORIGIN = 0x000000, LENGTH = 0x40000
+}
+
+SECTIONS
+{
+  .text :
+  {
+    *(.text)
+    _etext = .;
+  } > rom AT> pys_rom =0x4142
+
+  .data :
+  {
+    _data = .;
+    *(.data)
+    . = ALIGN(2);
+    tileset.raw.o       /* must be in chip ram */
+    . = ALIGN(2);
+    sound.raw.o
+    . = ALIGN(2);
+    _edata = .;
+  } > ram AT> pys_rom
+
+  .rodata ADDR(.text) + SIZEOF(.text) + SIZEOF(.data) :
+  {
+    *(.rodata)
+    . = ALIGN(2);
+  } > rom AT> pys_rom
+
+  .palette :
+  {
+    colors.pal.o
+    . = ALIGN(2);
+  } > rom AT> pys_rom
+
+  .tiling :
+  {
+    tilemap.raw.o
+    . = ALIGN(2);
+  } > rom AT> pys_rom
+
+  .chip_reg (NOLOAD) :
+  {
+    *(.chip_reg)
+  } > chip_reg
+
+  .ciaa_reg (NOLOAD) :
+  {
+    *(.ciaa_reg)
+  } > ciaa_reg
+
+  .ciab_reg (NOLOAD) :
+  {
+    *(.ciab_reg)
+  } > ciab_reg
+
+  .bss :
+  {
+    _bss = .;
+    *(.bss)
+    . = ALIGN(2);
+    _ebss = .;
+  } > ram
+}
