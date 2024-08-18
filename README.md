@@ -13,5 +13,5 @@ Setup
 
 Asset sources
 -------------
-- The tileset is based on this [one](https://opengameart.org/content/trivial-ega-tiles) (License CC0).
+- The tileset is based on this [one](https://opengameart.org/content/trivial-ega-tiles) (License CC0). It was used to create the tilemap with the level editor [Tiled](https://www.mapeditor.org).
 - The sound is downsampled from this [one](https://freesound.org/people/newagesoup/sounds/348243) (License CC0).
