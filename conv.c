@@ -145,10 +145,19 @@ int main(int argc, char **argv) {
     pal_p[0] = pal_p[dark_idx];
     pal_p[dark_idx] = temp_col;
 
+    int trans_idx = -1;
     if (trans_size) {
         png_byte temp_a = trans_ent_p[0];
         trans_ent_p[0] = trans_ent_p[dark_idx];
         trans_ent_p[dark_idx] = temp_a;
+
+        for (int i = 0; i < trans_size; i++)
+            if (!trans_ent_p[i]) {
+                trans_idx = i;
+                break;
+            }
+
+        printf("Transparent color index: %d\n", trans_idx);
     }
 
     int mask_idx = -1;
@@ -206,16 +215,19 @@ int main(int argc, char **argv) {
     }
 
     // Add mask
-    if (mask_idx >= 0)
+    if (mask_idx >= 0 || trans_idx >= 0)
         for (int i = 0; i < h; i++) {
             unsigned char buffer;
+            int pixel_idx;
 
             for (int l = 0; l < d; l++)
                 for (int j = 0; j < w; j += 8) {
                     buffer = 0;
-                    for (int k = 0; k < 8; k++)
-                        if (mapidx(*(row_pointers_p[i] + j + k)) != mask_idx)
+                    for (int k = 0; k < 8; k++) {
+                        pixel_idx = mapidx(*(row_pointers_p[i] + j + k));
+                        if (pixel_idx != mask_idx && pixel_idx != trans_idx)
                                 buffer |= 1 << (7 - k);
+                    }
                         
                     if (fwrite(&buffer, 1, 1, o) < 1) {
                         printf("Write error\n");
