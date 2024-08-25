@@ -4,7 +4,6 @@
 #include <setjmp.h>
 #include <math.h>
 
-png_color mask_col = { 85, 85, 85 };    // mask_col => mask = 0
 int dark_idx;
 
 int mapidx(int idx) {
@@ -24,8 +23,20 @@ float limcol(float v) {
 }
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        printf("File name expected\n");
+    int i, mr, mg, mb;
+
+    mr = -1;
+    if (argc == 6) {
+        if (argv[1][0] != '-' || argv[1][1] != 't' || argv[1][2] != '\0')
+            goto syn_error;
+
+        if (sscanf(argv[2], "%d,%d,%d", &mr, &mg, &mb) < 3)
+            goto syn_error;
+
+        argv += 2;
+    } else if (argc != 4) {
+syn_error:
+        printf("Syntax: conv [-t r,g,b] input_file output_palette output_image\n");
         exit(EXIT_FAILURE);
     }
 
@@ -40,8 +51,7 @@ int main(int argc, char **argv) {
     if (png_sig_cmp(header, 0, 2) || in != 2)
         exit(EXIT_FAILURE);
 
-    png_structp png_p = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL,
-            NULL, NULL);
+    png_structp png_p = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
     if (!png_p)
         exit(EXIT_FAILURE);
 
@@ -74,6 +84,7 @@ int main(int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
+    png_byte alphas[256];
     png_bytep trans_ent_p;
     png_int_32 trans_size;
     png_color_16p trans_col_p;
@@ -86,11 +97,6 @@ int main(int argc, char **argv) {
     png_get_PLTE(png_p, info_p, &pal_p, &pal_size);
 
     printf("Palette size: %d\n", pal_size);
-
-    if (trans_size && trans_size != pal_size) {
-        printf("Transparency values not for whole palette defined\n");
-        exit(EXIT_FAILURE);
-    }
 
     if (pal_size > 16) {
         pal_size = 16;
@@ -117,14 +123,14 @@ int main(int argc, char **argv) {
 
     printf("w: %u, h: %u, d: %d, c: %d\n", w, h, d, c);
 
-    FILE *o = fopen("colors.pal", "w");
+    FILE *o = fopen(argv[2], "w");
     if (!o) {
         perror(NULL);
         exit(EXIT_FAILURE);
     }
 
     int min_sat = 255*255*3 + 1;
-    for (int i = 0; i < pal_size; i++) {
+    for (i = 0; i < pal_size; i++) {
         int sat;
         png_byte r, g, b;
 
@@ -147,32 +153,37 @@ int main(int argc, char **argv) {
 
     int trans_idx = -1;
     if (trans_size) {
-        png_byte temp_a = trans_ent_p[0];
-        trans_ent_p[0] = trans_ent_p[dark_idx];
-        trans_ent_p[dark_idx] = temp_a;
+        for (i = 0; i < trans_size; i++)
+            alphas[i] = trans_ent_p[i];
+        for (; i < 256; i++)
+            alphas[i] = 255;
 
-        for (int i = 0; i < trans_size; i++)
-            if (!trans_ent_p[i]) {
+        png_byte temp_a = alphas[0];
+        alphas[0] = alphas[dark_idx];
+        alphas[dark_idx] = temp_a;
+
+        for (i = 0; i < trans_size; i++)
+            if (!alphas[i]) {
                 trans_idx = i;
                 break;
             }
-
-        printf("Transparent color index: %d\n", trans_idx);
     }
 
-    int mask_idx = -1;
-    for (int i = 0; i < pal_size; i++) {
+    printf("Transparent color index: %d\n", trans_idx);
+
+    int mask_idx = -1;      // if mask color => mask = 0
+    for (i = 0; i < pal_size; i++) {
         png_byte r, g, b;
         r = pal_p[i].red;
         g = pal_p[i].green;
         b = pal_p[i].blue;
 
-        if (r == mask_col.red && g == mask_col.green && b == mask_col.blue)
+        if (r == mr && g == mg && b == mb)
             mask_idx = i;
 
         printf("%2d: r: %-3d  g: %-3d  b: %-3d", i, r, g, b);
         if (trans_size)
-            printf(" a: %-3d\n", trans_ent_p[i]);
+            printf(" a: %-3d\n", alphas[i]);
         else
             printf("\n");
 
@@ -190,14 +201,14 @@ int main(int argc, char **argv) {
 
     printf("Mask color index: %d\n", mask_idx);
 
-    o = fopen("tileset.raw", "w");
+    o = fopen(argv[3], "w");
     if (!o) {
         perror(NULL);
         exit(EXIT_FAILURE);
     }
 
     png_bytep *row_pointers_p = png_get_rows(png_p, info_p);
-    for (int i = 0; i < h; i++) {
+    for (i = 0; i < h; i++) {
         unsigned char buffer;
 
         for (int l = 0; l < d; l++)
@@ -216,7 +227,7 @@ int main(int argc, char **argv) {
 
     // Add mask
     if (mask_idx >= 0 || trans_idx >= 0)
-        for (int i = 0; i < h; i++) {
+        for (i = 0; i < h; i++) {
             unsigned char buffer;
             int pixel_idx;
 
