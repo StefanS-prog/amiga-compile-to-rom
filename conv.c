@@ -4,6 +4,7 @@
 #include <setjmp.h>
 #include <math.h>
 
+png_byte alphas[256];
 int dark_idx;
 
 int mapidx(int idx) {
@@ -84,7 +85,6 @@ syn_error:
         exit(EXIT_FAILURE);
     }
 
-    png_byte alphas[256];
     png_bytep trans_ent_p;
     png_int_32 trans_size;
     png_color_16p trans_col_p;
