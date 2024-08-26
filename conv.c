@@ -4,7 +4,6 @@
 #include <setjmp.h>
 #include <math.h>
 
-png_byte alphas[256];
 int dark_idx;
 
 int mapidx(int idx) {
@@ -85,16 +84,20 @@ syn_error:
         exit(EXIT_FAILURE);
     }
 
-    png_bytep trans_ent_p;
-    png_int_32 trans_size;
-    png_color_16p trans_col_p;
-    png_get_tRNS(png_p, info_p, &trans_ent_p, &trans_size, &trans_col_p); 
+    png_byte alphas[256];
+    png_bytep trans_ent_p = NULL;
+    png_int_32 trans_size = 0;
+    if (!(png_get_tRNS(png_p, info_p, &trans_ent_p, &trans_size, NULL) & PNG_INFO_tRNS && trans_ent_p))
+        trans_size = 0;
 
     printf("Number of transparency values: %d\n", trans_size);
 
-    png_colorp pal_p;
-    png_int_32 pal_size;
-    png_get_PLTE(png_p, info_p, &pal_p, &pal_size);
+    png_colorp pal_p = NULL;
+    png_int_32 pal_size = 0;
+    if (!(png_get_PLTE(png_p, info_p, &pal_p, &pal_size) & PNG_INFO_PLTE && pal_size > 0 && pal_p)) {
+        printf("Palette error\n");
+        exit(EXIT_FAILURE);
+    } 
 
     printf("Palette size: %d\n", pal_size);
 
