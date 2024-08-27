@@ -36,7 +36,7 @@ int main(int argc, char **argv) {
         argv += 2;
     } else if (argc != 4) {
 syn_error:
-        printf("Syntax: conv [-t r,g,b] input_file output_palette output_image\n");
+        printf("Syntax: conv [-t r,g,b] input_image output_palette output_image\n");
         exit(EXIT_FAILURE);
     }
 
@@ -72,7 +72,10 @@ syn_error:
 
     png_uint_32 w, h;
     png_int_32 d, c;
-    png_get_IHDR(png_p, info_p, &w, &h, &d, &c, NULL, NULL, NULL);
+    if (!png_get_IHDR(png_p, info_p, &w, &h, &d, &c, NULL, NULL, NULL)) {
+        printf("Image header could not be read\n");
+        exit(EXIT_FAILURE);
+    }
 
     if (w & 0xf) {
         printf("Image width must be multiple of 16\n");
