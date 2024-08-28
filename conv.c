@@ -48,7 +48,7 @@ syn_error:
 
     unsigned char header[2];
     size_t in = fread(header, 1, 2, f);
-    if (png_sig_cmp(header, 0, 2) || in != 2)
+    if (in != 2 || png_sig_cmp(header, 0, 2))
         exit(EXIT_FAILURE);
 
     png_structp png_p = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
@@ -57,10 +57,6 @@ syn_error:
 
     png_infop info_p = png_create_info_struct(png_p);
     if (!info_p)
-        exit(EXIT_FAILURE);
-
-    png_infop end_info_p = png_create_info_struct(png_p);
-    if (!end_info_p)
         exit(EXIT_FAILURE);
 
     if (setjmp(png_jmpbuf(png_p)))
@@ -88,15 +84,15 @@ syn_error:
     }
 
     png_byte alphas[256];
-    png_bytep trans_ent_p = NULL;
-    png_int_32 trans_size = 0;
-    if (!(png_get_tRNS(png_p, info_p, &trans_ent_p, &trans_size, NULL) & PNG_INFO_tRNS && trans_ent_p))
+    png_bytep trans_ent_p;
+    int trans_size;
+    if (!(png_get_tRNS(png_p, info_p, &trans_ent_p, &trans_size, NULL) & PNG_INFO_tRNS && trans_ent_p && trans_size > 0))
         trans_size = 0;
 
     printf("Number of transparency values: %d\n", trans_size);
 
-    png_colorp pal_p = NULL;
-    png_int_32 pal_size = 0;
+    png_colorp pal_p;
+    int pal_size;
     if (!(png_get_PLTE(png_p, info_p, &pal_p, &pal_size) & PNG_INFO_PLTE && pal_size > 0 && pal_p)) {
         printf("Palette error\n");
         exit(EXIT_FAILURE);
