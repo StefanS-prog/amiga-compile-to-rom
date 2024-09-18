@@ -11,8 +11,8 @@ int mapidx(int idx) {
         return dark_idx;
     else if (idx == dark_idx)
         return 0;
-
-    return idx;
+    else
+        return idx;
 }    
 
 float limcol(float v) {
@@ -30,25 +30,25 @@ int main(int argc, char **argv) {
         if (argv[1][0] != '-' || argv[1][1] != 't' || argv[1][2] != '\0')
             goto syn_error;
 
-        if (sscanf(argv[2], "%d,%d,%d", &mr, &mg, &mb) < 3)
+        if (sscanf(argv[2], "%d,%d,%d", &mr, &mg, &mb)<3 || mr<0 || mg<0 || mb<0)
             goto syn_error;
 
         argv += 2;
     } else if (argc != 4) {
 syn_error:
-        printf("Syntax: conv [-t r,g,b] input_image output_palette output_image\n");
+        fprintf(stderr, "Syntax: conv [-t r,g,b] input_image output_palette output_image\n");
         exit(EXIT_FAILURE);
     }
 
-    FILE *f = fopen(argv[1], "rb");
+    FILE *f = fopen(argv[1], "r"); // open PNG image
     if (!f) {
         perror(NULL);
         exit(EXIT_FAILURE);
     }
 
-    unsigned char header[2];
-    size_t in = fread(header, 1, 2, f);
-    if (in != 2 || png_sig_cmp(header, 0, 2))
+    unsigned char header[8];
+    size_t in = fread(header, 1, 8, f);
+    if (in != 8 || png_sig_cmp(header, 0, 8))
         exit(EXIT_FAILURE);
 
     png_structp png_p = png_create_read_struct(PNG_LIBPNG_VER_STRING, NULL, NULL, NULL);
@@ -63,49 +63,49 @@ syn_error:
         exit(EXIT_FAILURE);
 
     png_init_io(png_p, f);
-    png_set_sig_bytes(png_p, 2);
+    png_set_sig_bytes(png_p, 8);
     png_read_png(png_p, info_p, PNG_TRANSFORM_PACKING, NULL);
 
     png_uint_32 w, h;
     png_int_32 d, c;
     if (!png_get_IHDR(png_p, info_p, &w, &h, &d, &c, NULL, NULL, NULL)) {
-        printf("Image header could not be read\n");
-        exit(EXIT_FAILURE);
-    }
-
-    if (w & 0xf) {
-        printf("Image width must be multiple of 16\n");
+        fprintf(stderr, "Image header could not be read\n");
         exit(EXIT_FAILURE);
     }
 
     if (c != PNG_COLOR_TYPE_PALETTE) {
-        printf("Image must contain a palette\n");
+        fprintf(stderr, "Image must contain a palette\n");
         exit(EXIT_FAILURE);
     }
 
-    png_byte alphas[256];
+    png_byte alphas[256] = { [0 ... 255] = 255};
     png_bytep trans_ent_p;
-    int trans_size;
+    int trans_size; // read transparency chunk
     if (!(png_get_tRNS(png_p, info_p, &trans_ent_p, &trans_size, NULL) & PNG_INFO_tRNS && trans_ent_p && trans_size > 0))
         trans_size = 0;
 
-    printf("Number of transparency values: %d\n", trans_size);
+    for (i = 0; i < trans_size; i++)
+        alphas[i] = trans_ent_p[i];
 
     png_colorp pal_p;
-    int pal_size;
+    int pal_size; // read palette
     if (!(png_get_PLTE(png_p, info_p, &pal_p, &pal_size) & PNG_INFO_PLTE && pal_size > 0 && pal_p)) {
-        printf("Palette error\n");
+        fprintf(stderr, "Palette could not be read\n");
         exit(EXIT_FAILURE);
     } 
 
-    printf("Palette size: %d\n", pal_size);
+    fprintf(stderr, "Found palette of size %d with %d transparency value(s)\n", pal_size, trans_size);
 
     if (pal_size > 16) {
         pal_size = 16;
-        printf("Limiting palette size to 16\n");
+        fprintf(stderr, "Limiting palette size of 256 to 16\n");
     }
 
-    switch (pal_size) {
+    switch (pal_size) { // compute color depth
+        case 256:
+            d = 8;
+            break;
+
         case 16:
             d = 4;
             break;
@@ -119,21 +119,19 @@ syn_error:
             break;
 
         default:
-            printf("Final palette size must be 16, 4, or 2\n");
+            fprintf(stderr, "Illegal palette size\n");
             exit(EXIT_FAILURE);
     }
 
-    printf("w: %u, h: %u, d: %d, c: %d\n", w, h, d, c);
-
-    FILE *o = fopen(argv[2], "w");
+    FILE *o = fopen(argv[2], "w"); // open palette file
     if (!o) {
         perror(NULL);
         exit(EXIT_FAILURE);
     }
 
-    int min_sat = 255*255*3 + 1;
-    for (i = 0; i < pal_size; i++) {
-        int sat;
+    long sat;
+    long min_sat = 255*255*3 + 1;
+    for (i = 0; i < pal_size; i++) { // search for darkest color
         png_byte r, g, b;
 
         r = pal_p[i].red;
@@ -147,33 +145,25 @@ syn_error:
         }
     }
 
-    printf("Original darkest color index: %d\n", dark_idx);
-
     png_color temp_col = pal_p[0];
     pal_p[0] = pal_p[dark_idx];
     pal_p[dark_idx] = temp_col;
 
+    png_byte temp_a = alphas[0];
+    alphas[0] = alphas[dark_idx];
+    alphas[dark_idx] = temp_a;
+
     int trans_idx = -1;
-    if (trans_size) {
-        for (i = 0; i < trans_size; i++)
-            alphas[i] = trans_ent_p[i];
-        for (; i < 256; i++)
-            alphas[i] = 255;
+    for (i = 0; i < trans_size; i++) // check for color with zero alpha
+        if (!alphas[i]) {
+            trans_idx = i;
+            break;
+        }
 
-        png_byte temp_a = alphas[0];
-        alphas[0] = alphas[dark_idx];
-        alphas[dark_idx] = temp_a;
+    if (trans_idx >= 0)
+        fprintf(stderr, "Treating index %d as transparent\n", trans_idx);
 
-        for (i = 0; i < trans_size; i++)
-            if (!alphas[i]) {
-                trans_idx = i;
-                break;
-            }
-    }
-
-    printf("Transparent color index: %d\n", trans_idx);
-
-    int mask_idx = -1;      // if mask color => mask = 0
+    int mask_idx = -1; // for transparency color mask = 0 => background visible
     for (i = 0; i < pal_size; i++) {
         png_byte r, g, b;
         r = pal_p[i].red;
@@ -183,25 +173,21 @@ syn_error:
         if (r == mr && g == mg && b == mb)
             mask_idx = i;
 
-        printf("%2d: r: %-3d  g: %-3d  b: %-3d", i, r, g, b);
-        if (trans_size)
-            printf(" a: %-3d\n", alphas[i]);
-        else
-            printf("\n");
+        fprintf(stderr, "| %2d: r: %-3d  g: %-3d  b: %-3d  a: %-3d\n", i, r, g, b, alphas[i]);
 
         unsigned char buffer[2];
         buffer[0] = (int)limcol(roundf(r/255.0f*15.0f));
         buffer[1] = (int)limcol(roundf(b/255.0f*15.0f));
         buffer[1] |= (int)limcol(roundf(g/255.0f*15.0f)) << 4;
         if (fwrite(buffer, 1, 2, o) < 2) {
-            printf("Write error\n");
+            fprintf(stderr, "Palette write error\n");
             exit(EXIT_FAILURE);
         }
     }
 
     fclose(o);
-
-    printf("Mask color index: %d\n", mask_idx);
+    if (mask_idx >= 0)
+        fprintf(stderr, "Treating index %d as transparent\n", mask_idx);
 
     o = fopen(argv[3], "w");
     if (!o) {
@@ -221,7 +207,7 @@ syn_error:
                         buffer |= 1 << (7 - k);
                 
                 if (fwrite(&buffer, 1, 1, o) < 1) {
-                    printf("Write error\n");
+                    fprintf(stderr, "Image write error\n");
                     exit(EXIT_FAILURE);
                 }
             }
@@ -243,13 +229,13 @@ syn_error:
                     }
                         
                     if (fwrite(&buffer, 1, 1, o) < 1) {
-                        printf("Write error\n");
+                        fprintf(stderr, "Image write error\n");
                         exit(EXIT_FAILURE);
                     }
                 }
         }
     else
-        printf("Mask data is omitted\n");
+        fprintf(stderr, "No mask data for transparency has been written\n");
 
     fclose(o);
     exit(EXIT_SUCCESS);
