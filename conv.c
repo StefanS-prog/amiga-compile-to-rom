@@ -30,7 +30,7 @@ int main(int argc, char **argv) {
         if (argv[1][0] != '-' || argv[1][1] != 't' || argv[1][2] != '\0')
             goto syn_error;
 
-        if (sscanf(argv[2], "%d,%d,%d", &mr, &mg, &mb)<3 || mr<0 || mg<0 || mb<0)
+        if (sscanf(argv[2], "%3d,%3d,%3d", &mr, &mg, &mb)<3 || mr<0 || mg<0 || mb<0)
             goto syn_error;
 
         argv += 2;
@@ -40,7 +40,7 @@ syn_error:
         exit(EXIT_FAILURE);
     }
 
-    FILE *f = fopen(argv[1], "r"); // open PNG image
+    FILE *f = fopen(argv[1], "r"); // open PNG input image
     if (!f) {
         perror(NULL);
         exit(EXIT_FAILURE);
@@ -88,7 +88,7 @@ syn_error:
         alphas[i] = trans_ent_p[i];
 
     png_colorp pal_p;
-    int pal_size; // read palette
+    int pal_size; // read palette chunk
     if (!(png_get_PLTE(png_p, info_p, &pal_p, &pal_size) & PNG_INFO_PLTE && pal_size > 0 && pal_p)) {
         fprintf(stderr, "Palette could not be read\n");
         exit(EXIT_FAILURE);
@@ -123,7 +123,25 @@ syn_error:
             exit(EXIT_FAILURE);
     }
 
-    FILE *o = fopen(argv[2], "w"); // open palette file
+    png_textp text_p;
+    int text_size; // read text chunks
+    if (png_get_text(png_p, info_p, &text_p, &text_size) && text_p && text_size > 0) {
+        FILE *t = fopen("tiletypes.h", "w");
+        if (!t) {
+            perror(NULL);
+            exit(EXIT_FAILURE);
+        }
+
+        for (i = 0; i < text_size; i++)
+            if (fprintf(t, "#define %s\n", (char *)text_p[i].text) < 0) {
+                fprintf(stderr, "Tile types write error\n");
+                exit(EXIT_FAILURE);
+            }
+
+        fclose(t);
+    }
+
+    FILE *o = fopen(argv[2], "w"); // open palette file for output
     if (!o) {
         perror(NULL);
         exit(EXIT_FAILURE);
@@ -145,7 +163,7 @@ syn_error:
         }
     }
 
-    png_color temp_col = pal_p[0];
+    png_color temp_col = pal_p[0]; // swap darkest color to index zero
     pal_p[0] = pal_p[dark_idx];
     pal_p[dark_idx] = temp_col;
 
@@ -163,7 +181,7 @@ syn_error:
     if (trans_idx >= 0)
         fprintf(stderr, "Treating index %d as transparent\n", trans_idx);
 
-    int mask_idx = -1; // for transparency color mask = 0 => background visible
+    int mask_idx = -1; // color mask = 0 for transparency => background visible
     for (i = 0; i < pal_size; i++) {
         png_byte r, g, b;
         r = pal_p[i].red;
@@ -189,7 +207,7 @@ syn_error:
     if (mask_idx >= 0)
         fprintf(stderr, "Treating index %d as transparent\n", mask_idx);
 
-    o = fopen(argv[3], "w");
+    o = fopen(argv[3], "w"); // open image file for output of raw data
     if (!o) {
         perror(NULL);
         exit(EXIT_FAILURE);
@@ -213,8 +231,7 @@ syn_error:
             }
     }
 
-    // Add mask
-    if (mask_idx >= 0 || trans_idx >= 0)
+    if (mask_idx >= 0 || trans_idx >= 0) // Add mask
         for (i = 0; i < h; i++) {
             unsigned char buffer;
             int pixel_idx;
